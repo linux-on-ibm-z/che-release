@@ -119,18 +119,6 @@ evaluateCheVariables() {
     echo "Release Process Phases: '${PHASES}'"
 }
 
-# for a given GH repo and action name, compute workflow_id
-# warning: variable workflow_id is a global, so don't call this in parallel executions!
-computeWorkflowId() {
-    this_repo=$1
-    this_action_name=$2
-    workflow_id=$(curl -sSL https://api.github.com/repos/${this_repo}/actions/workflows -H "Authorization: token ${GITHUB_TOKEN}" -H "Accept: application/vnd.github.v3+json" | jq --arg search_field "${this_action_name}" '.workflows[] | select(.name == $search_field).id'); # echo "workflow_id = $workflow_id"
-    if [[ ! $workflow_id ]]; then
-        die_with "[ERROR] Could not compute workflow id from https://api.github.com/repos/${this_repo}/actions/workflows - check your GITHUB_TOKEN is active"
-    fi
-    # echo "[INFO] Got workflow_id $workflow_id for $this_repo action '$this_action_name'"
-}
-
 # generic method to call a GH action and pass in a single var=val parameter 
 invokeAction() {
     this_repo=$1
@@ -147,10 +135,10 @@ invokeAction() {
         # now we have a global value for $workflow_id
     fi
 
-    if [[ ${this_repo} == "devfile/devworkspace-operator" ]] || [[ ${this_repo} == "che-incubator/devworkspace-che-operator" ]] || [[ ${this_repo} == "eclipse-che/che-machine-exec" ]] || [[ ${this_repo} == "eclipse-che/che-dashboard" ]] || [[ ${this_repo} == "eclipse-che/che-operator" ]];then
-        WORKFLOW_MAIN_BRANCH="main"
+    if [[ ${this_repo} == "devfile/devworkspace-operator" ]] || [[ ${this_repo} == "che-incubator/devworkspace-che-operator" ]] || [[ ${this_repo} == "linux-on-ibm-z/che-machine-exec" ]] || [[ ${this_repo} == "eclipse-che/che-dashboard" ]] || [[ ${this_repo} == "eclipse-che/che-operator" ]];then
+        WORKFLOW_MAIN_BRANCH="travis-test" #main
     else
-        WORKFLOW_MAIN_BRANCH="master"
+        WORKFLOW_MAIN_BRANCH="travis-test" #master
     fi
 
     if [[ ${this_repo} == "devfile/devworkspace-operator" ]];then
@@ -165,16 +153,16 @@ invokeAction() {
         workflow_ref=${WORKFLOW_BUGFIX_BRANCH}
     fi
 
-    inputsJson="{}"
+    # inputsJson="{}"
 
-    IFS=',' read -ra paramMap <<< "${this_params}"
-    for keyvalue in "${paramMap[@]}"
-    do 
-        key=${keyvalue%=*}
-        value=${keyvalue#*=}
-        echo $var1
-        inputsJson=$(echo "${inputsJson}" | jq ". + {\"${key}\": \"${value}\"}")
-    done
+    # IFS=',' read -ra paramMap <<< "${this_params}"
+    # for keyvalue in "${paramMap[@]}"
+    # do 
+    #     key=${keyvalue%=*}
+    #     value=${keyvalue#*=}
+    #     echo $var1
+    #     inputsJson=$(echo "${inputsJson}" | jq ". + {\"${key}\": \"${value}\"}")
+    # done
 
     if [[ ${this_repo} == "che-incubator"* ]] || [[ ${this_repo} == "devfile"* ]]; then
         this_github_token=${CHE_INCUBATOR_BOT_GITHUB_TOKEN}
@@ -182,52 +170,81 @@ invokeAction() {
         this_github_token=${GITHUB_TOKEN}
     fi
 
-    curl -sSL https://api.github.com/repos/${this_repo}/actions/workflows/${workflow_id}/dispatches -X POST -H "Authorization: token ${this_github_token}" -H "Accept: application/vnd.github.v3+json" -d "{\"ref\":\"${workflow_ref}\",\"inputs\": ${inputsJson} }" || die_with "[ERROR] Problem invoking action https://github.com/${this_repo}/actions?query=workflow%3A%22${this_action_name// /+}%22"
-    echo "[INFO] Invoked '${this_action_name}' action ($workflow_id) - see https://github.com/${this_repo}/actions?query=workflow%3A%22${this_action_name// /+}%22"
+    IFS='/' #setting comma as delimiter  
+    read -a strarr <<<"$this_repo"
+    Org=${strarr[0]}
+    Repo=${strarr[1]}
+
+    body="{
+    \"request\":{
+    \"branch\":\"$WORKFLOW_MAIN_BRANCH\",
+    \"merge_mode\": \"deep_merge_append\", 
+    \"config\": {
+      \"env\": {
+        \"global\": [
+          \"TAG=$CHE_VERSION\"
+         ]
+       }
+    }
+    }}"
+
+    echo $body
+
+    curl -s -X POST \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json" \
+    -H "Travis-API-Version: 3" \
+    -H "Authorization: token ${TRAVIS_TOKEN}" \
+    -d "$body" \
+    https://api.travis-ci.com/repo/${Org}%2F${Repo}/requests
+    
+    #curl -sSL https://api.github.com/repos/${this_repo}/actions/workflows/${workflow_id}/dispatches -X POST -H "Authorization: token ${this_github_token}" -H "Accept: application/vnd.github.v3+json" -d "{\"ref\":\"${workflow_ref}\",\"inputs\": ${inputsJson} }" || die_with "[ERROR] Problem invoking action https://github.com/${this_repo}/actions?query=workflow%3A%22${this_action_name// /+}%22"
+    echo "[INFO] Invoked '${this_action_name}' Travis job - see https://travis-ci.com/github/${Org}/${Repo}/builds"
+    date
 }
 
 releaseMachineExec() {
-    invokeAction eclipse-che/che-machine-exec "Release Che Machine Exec" "7369994" "version=${CHE_VERSION}"
+    invokeAction linux-on-ibm-z/che-machine-exec "Release Che Machine Exec" "version=${CHE_VERSION}"
 }
 
 releaseCheTheia() {
-    invokeAction eclipse-che/che-theia "Release Che Theia" "5717988" "version=${CHE_VERSION}"
+    invokeAction linux-on-ibm-z/che-theia "Release Che Theia" "version=${CHE_VERSION}"
 }
 
 releaseDevfileRegistry() {
-    invokeAction eclipse-che/che-devfile-registry "Release Che Devfile Registry" "4191260" "version=${CHE_VERSION}"
+    invokeAction linux-on-ibm-z/che-devfile-registry "Release Che Devfile Registry" "version=${CHE_VERSION}"
 }
 releasePluginRegistry() {
-    invokeAction eclipse-che/che-plugin-registry "Release Che Plugin Registry" "4191251" "version=${CHE_VERSION}"
+    invokeAction linux-on-ibm-z/che-plugin-registry "Release Che Plugin Registry" "version=${CHE_VERSION}"
 }
 
 branchJWTProxyAndKIP() {
-    invokeAction eclipse/che-jwtproxy "Create branch" "5410230" "branch=${BRANCH}"
-    invokeAction che-incubator/kubernetes-image-puller "Create branch" "5409996" "branch=${BRANCH}"
+    invokeAction linux-on-ibm-z/che-jwtproxy "Create branch" "branch=${BRANCH}"
+    invokeAction linux-on-ibm-z/kubernetes-image-puller "Create branch" "branch=${BRANCH}"
 }
 
 releaseDashboard() {
-    invokeAction eclipse-che/che-dashboard "Release Che Dashboard" "3152474" "version=${CHE_VERSION}"
+    invokeAction linux-on-ibm-z/che-dashboard "Release Che Dashboard" "version=${CHE_VERSION}"
 }
 
 releaseChe() {
-    invokeAction eclipse/che "Release Che" "5536792" "version=${CHE_VERSION}"
+    invokeAction linux-on-ibm-z/che "Release Che" "version=${CHE_VERSION}"
 }
 
 releaseCheServer() {
-    invokeAction eclipse-che/che-server "Release Che Server" "9230035" "version=${CHE_VERSION},releaseParent=${RELEASE_CHE_PARENT},versionParent=${VERSION_CHE_PARENT}"
+    invokeAction linux-on-ibm-z/che-server "Release Che Server" "version=${CHE_VERSION},releaseParent=${RELEASE_CHE_PARENT},versionParent=${VERSION_CHE_PARENT}"
 }
 
 releaseCheOperator() {
-    invokeAction eclipse-che/che-operator "Release Che Operator" "3593082" "version=${CHE_VERSION},dwoVersion=${DWO_VERSION},dwoCheVersion=v${CHE_VERSION}"
+    invokeAction linux-on-ibm-z/che-operator "Release Che Operator" "version=${CHE_VERSION},dwoVersion=${DWO_VERSION},dwoCheVersion=v${CHE_VERSION}"
 }
 
 releaseDwoOperator() {
-    invokeAction devfile/devworkspace-operator "Release DevWorkspace Operator" "6380164" "version=${DWO_VERSION}"
+    invokeAction linux-on-ibm-z/devworkspace-operator "Release DevWorkspace Operator" "version=${DWO_VERSION}"
 }
 
 releaseDwoCheOperator() {
-    invokeAction che-incubator/devworkspace-che-operator "Release DevWorkspace Che Operator" "6597719" "version=v${CHE_VERSION},dwoVersion=${DWO_VERSION}"
+    invokeAction linux-on-ibm-z/devworkspace-che-operator "Release DevWorkspace Che Operator" "version=v${CHE_VERSION},dwoVersion=${DWO_VERSION}"
 }
 
 # TODO change it to someone else?
@@ -280,19 +297,19 @@ set -e
 set +x
 if [[ ${PHASES} == *"1"* ]]; then
     releaseMachineExec
-    releaseDevfileRegistry
-    releaseDashboard
-    releaseDwoOperator
-    branchJWTProxyAndKIP
-    releaseCheServer
-    releaseChe
+    #releaseDevfileRegistry
+    #releaseDashboard
+    #releaseDwoOperator
+    #branchJWTProxyAndKIP
+    #releaseCheServer
+    #releaseChe
 fi
 wait
 verifyContainerExistsWithTimeout ${REGISTRY}/${ORGANIZATION}/che-machine-exec:${CHE_VERSION} 60
-verifyContainerExistsWithTimeout ${REGISTRY}/${ORGANIZATION}/che-devfile-registry:${CHE_VERSION} 60
-verifyContainerExistsWithTimeout ${REGISTRY}/${ORGANIZATION}/che-dashboard:${CHE_VERSION} 60
+#verifyContainerExistsWithTimeout ${REGISTRY}/${ORGANIZATION}/che-devfile-registry:${CHE_VERSION} 60
+#verifyContainerExistsWithTimeout ${REGISTRY}/${ORGANIZATION}/che-dashboard:${CHE_VERSION} 60
 # https://quay.io/repository/devfile/devworkspace-controller?tab=tags
-verifyContainerExistsWithTimeout ${REGISTRY}/devfile/devworkspace-controller:${DWO_VERSION} 60
+#verifyContainerExistsWithTimeout ${REGISTRY}/devfile/devworkspace-controller:${DWO_VERSION} 60
 
 IMAGES_LIST=(
     quay.io/eclipse/che-endpoint-watcher
@@ -304,7 +321,8 @@ IMAGES_LIST=(
 )
 
 for image in "${IMAGES_LIST[@]}"; do
-    verifyContainerExistsWithTimeout ${image}:${CHE_VERSION} 60
+    echo "bypass"
+    #verifyContainerExistsWithTimeout ${image}:${CHE_VERSION} 60
 done
 
 set +x
