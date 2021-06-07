@@ -5,7 +5,7 @@
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" || exit; pwd)
 REGISTRY="quay.io"
-ORGANIZATION="eclipse"
+ORGANIZATION="prabhav"
 
 die_with() 
 {
