@@ -138,7 +138,7 @@ invokeAction() {
     if [[ ${this_repo} == "devfile/devworkspace-operator" ]] || [[ ${this_repo} == "che-incubator/devworkspace-che-operator" ]] || [[ ${this_repo} == "linux-on-ibm-z/che-machine-exec" ]] || [[ ${this_repo} == "eclipse-che/che-dashboard" ]] || [[ ${this_repo} == "eclipse-che/che-operator" ]];then
         WORKFLOW_MAIN_BRANCH="travis-test" #main
     else
-        WORKFLOW_MAIN_BRANCH="travis-test" #master
+        WORKFLOW_MAIN_BRANCH="test-che-release" #master
     fi
 
     if [[ ${this_repo} == "devfile/devworkspace-operator" ]];then
